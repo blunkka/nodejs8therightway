@@ -33,7 +33,8 @@ program
     .option('-p, --port <number>', 'port number [9200]', '9200')
     .option('-j, --json', 'format output as JSON')
     .option('-i, --index <name>', 'which index to use')
-    .option('-t, --type <type>', 'default type for bulk operations');
+    .option('-t, --type <type>', 'default type for bulk operations')
+    .option('-f, --filter <filter>', 'source filter for query results');
 
 program
     .command('url [path]')
@@ -74,6 +75,72 @@ program
             url: fullUrl(path),
             json: program.json
         }, handleResponse);
+    });
+
+program
+    .command('bulk <file>')
+    .description('read and perform bulk options from the specified file')
+    .action(file => {
+        fs.stat(file, (err, stats) => {
+            if(err) {
+                if(program.json) {
+                    console.log(JSON.stringify(err));
+                    return;
+                }
+                throw err;
+            }
+            const options = {
+                url: fullUrl('_bulk'),
+                json: true,
+                headers: {
+                    'content-length': stats.size,
+                    'content-type': 'application/json'
+                }
+            };
+
+            //return object is a writable stream
+            const req = request.post(options);
+
+            const stream = fs.createReadStream(file);
+            stream.pipe(req);
+            req.pipe(process.stdout);
+        });
+    });
+
+program
+    .command('query [queries...]')
+    .alias('q')
+    .description('perform an Elasticsearch query')
+    .action((queries = []) => {
+        const options = {
+            url: fullUrl('_search'),
+            json: program.json,
+            qs: {}
+        };
+
+        if(queries && queries.length) {
+            options.qs.q = queries.join(' ');
+        }
+
+        if(program.filter) {
+            options.qs._source = program.filter;
+        }
+
+        request(options, handleResponse);
+    });
+
+program
+    .command('delete-index')
+    .description('delete specified index')
+    .action(() => {
+        if(!program.index) {
+            const msg = 'No index specified! Use --index <name>';
+            if(!program.json) throw Error(msg);
+            console.log(JSON.stringify({error: msg}));
+            return;
+        }
+
+        //TODO delete request
     });
 
 program.parse(process.argv);
