@@ -11,8 +11,12 @@ const fullUrl = (path = '') => {
         url += program.index + '/';
         if(program.type) {
             url += program.type + '/';
+            if(program.id) {
+                url += program.id + '/';
+            }
         }
     }
+
     return url + path.replace(/^\/*/, '');
 };
 
@@ -33,8 +37,9 @@ program
     .option('-p, --port <number>', 'port number [9200]', '9200')
     .option('-j, --json', 'format output as JSON')
     .option('-i, --index <name>', 'which index to use')
-    .option('-t, --type <type>', 'default type for bulk operations')
-    .option('-f, --filter <filter>', 'source filter for query results');
+    .option('-t, --type <type>', 'default type for bulk operations or type for put request')
+    .option('-f, --filter <filter>', 'source filter for query results')
+    .option('--id <id>', 'id for put command');
 
 program
     .command('url [path]')
@@ -75,6 +80,46 @@ program
             url: fullUrl(path),
             json: program.json
         }, handleResponse);
+    });
+
+    program
+    .command('put <file>')
+    .description('insert new document or override existing document if there is a collision')
+    .action(file => {
+        if(!program.id) {
+            const msg = 'No id specified! Use --id <id>';
+            if(!program.json) throw Error(msg);
+            console.log(JSON.stringify({error: msg}));
+            return;
+        }
+        if(!program.type) {
+            const msg = 'No type specified! Use -t <type>';
+            if(!program.json) throw Error(msg);
+            console.log(JSON.stringify({error: msg}));
+            return;
+        }
+        fs.stat(file, (err, stats) => {
+            if(err) {
+                if(program.json) {
+                    console.log(JSON.stringify(err));
+                    return;
+                }
+                throw err;
+            }
+            const options = {
+                url: fullUrl(),
+                json: true,
+                headers: {
+                    'content-length': stats.size,
+                    'content-type': 'application/json'
+                }
+            };
+
+            const req = request.put(options);
+            const stream = fs.createReadStream(file);
+            stream.pipe(req);
+            req.pipe(process.stdout);
+        });
     });
 
 program
@@ -142,6 +187,8 @@ program
 
         //TODO delete request
     });
+
+
 
 program.parse(process.argv);
 
